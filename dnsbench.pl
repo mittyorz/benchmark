@@ -5,7 +5,7 @@ use warnings;
 
 use Net::DNS;
 
-my $hostlist = shift @ARGV || die "usage: $0 list_of_hosts [nameserver]";
+my $hostlist = shift @ARGV or die "usage: $0 list_of_hosts [nameserver]";
 if (! -r $hostlist) {
     die "$0: cannot read $hostlist";
 }
@@ -24,8 +24,8 @@ else {
 }
 
 
-open LIST, "<$hostlist";
-while (my $host = <LIST>) {
+open my $list, '<', $hostlist or die "$0: filename: $!";
+while (my $host = <$list>) {
     chomp $host;
     my $query = $res->send($host);
     if ($query) {
