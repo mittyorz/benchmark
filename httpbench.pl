@@ -34,16 +34,19 @@ warn "wait for $wait second between requests\n";
 
 
 my $pm = Parallel::ForkManager->new($concurrency);
-for (my $i = 0; $i < $loops; $i++) {
-    for (my $child = 0; $child < $concurrency; $child++) {
-        $pm->start and next;
+for (my $child = 0; $child < $concurrency; $child++) {
+    if ($pm->start) {
+        warn "forks $child/$concurrency child ...\n";
+        next;
+    }
+        for (my $i = 0; $i < $loops; $i++) {
+            print STDERR "processing $i/$loops loop\r";
             foreach my $url (@urls) {
                 get($url) or warn "fail: $url\n";
                 sleep($wait);
             }
-        $pm->finish;
-    }
-    print STDERR " ... ", $num * $concurrency * ($i + 1), " requesting\r";
+        }
+    $pm->finish;
 }
 $pm->wait_all_children;
 
