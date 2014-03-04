@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use utf8;
 
-use Getopt::Long;
+use Getopt::Long qw(:config posix_default no_ignore_case gnu_compat);
 use Parallel::ForkManager;
 use LWP::Simple;
 use Time::HiRes qw(sleep);
