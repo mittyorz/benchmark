@@ -9,6 +9,8 @@ use Parallel::ForkManager;
 use LWP::Simple;
 use Time::HiRes qw(sleep);
 
+usage() if (@ARGV == 0);
+
 GetOptions(
     'h|help'            => \ my $help,
     'i|inputfile=s'     => \ my $file,
