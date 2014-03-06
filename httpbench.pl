@@ -16,6 +16,7 @@ GetOptions(
     'i|inputfile=s'     => \ my $file,
     'c|concurrency=i'   => \ my $concurrency,
     'n|loops=i'         => \ my $loops,
+    'd|duration=i'      => \ my $duration,
     'w|wait=f'          => \ my $wait,
 ) or usage();
 
@@ -23,14 +24,16 @@ usage() if $help;
 
 $concurrency ||= 1;
 $loops ||= 1;
+$duration ||= 0;
 $wait ||= 0;
 
 my @urls = file2urls($file) if ($file);
 push @urls, @ARGV;
 
 my $num = scalar @urls;
-warn "$num urls with $concurrency clients, $loops loops\n";
-warn "Total: ", $num * $concurrency * $loops, " requests\n";
+my $l = ($duration) ? "$duration seconds loops" : "$loops loops";
+warn "$num urls with $concurrency clients, $l\n";
+warn "Total: ", $num * $concurrency * $loops, " requests\n" if (! $duration);
 warn "wait for $wait second between requests\n" if ($wait);
 
 my $ua = LWP::UserAgent->new(
@@ -57,7 +60,15 @@ for (my $child = 0; $child < $concurrency; $child++) {
     else {
         # child
         my $transfer = 0;
-        for (my $i = 0; $i < $loops; $i++) {
+        my $i = 0;
+        while (1) {
+            if ($duration) {
+                last if (time() - $startsec > $duration);
+            }
+            else {
+                last if ($i >= $loops);
+            }
+            
             print STDERR "processing $i/$loops loop\r";
             foreach my $url (@urls) {
                 my $res = $ua->get($url);
@@ -69,6 +80,8 @@ for (my $child = 0; $child < $concurrency; $child++) {
                 }
                 sleep($wait);
             }
+            
+            $i++;
         }
         $pm->finish(0, \$transfer);
     }
