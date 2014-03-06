@@ -6,7 +6,7 @@ use utf8;
 
 use Getopt::Long qw(:config posix_default no_ignore_case gnu_compat);
 use Parallel::ForkManager;
-use LWP::Simple;
+use LWP::UserAgent;
 use Time::HiRes qw(sleep gettimeofday);
 
 usage() if (@ARGV == 0);
@@ -33,7 +33,9 @@ warn "$num urls with $concurrency clients, $loops loops\n";
 warn "Total: ", $num * $concurrency * $loops, " requests\n";
 warn "wait for $wait second between requests\n" if ($wait);
 
-
+my $ua = LWP::UserAgent->new(
+    ssl_opts => { verify_hostname => 0 },
+);
 my $transfer = 0;
 my $pm = Parallel::ForkManager->new($concurrency);
 $pm->run_on_finish(
@@ -57,9 +59,12 @@ my ($startsec, $startmicro) = gettimeofday();
             for (my $i = 0; $i < $loops; $i++) {
                 print STDERR "processing $i/$loops loop\r";
                 foreach my $url (@urls) {
-                    my $res = get($url) or print STDERR "\nfail: $url";
-                    if ($res) {
-                        $transfer += length($res);
+                    my $res = $ua->get($url);
+                    if ($res->is_success) {
+                        $transfer += length($res->content);
+                    }
+                    else {
+                        print STDERR "\nfail: $url";
                     }
                     sleep($wait);
                 }
