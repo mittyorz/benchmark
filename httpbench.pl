@@ -48,31 +48,32 @@ $pm->run_on_finish(
 );
 
 my ($startsec, $startmicro) = gettimeofday();
-{
+for (my $child = 0; $child < $concurrency; $child++) {
     use bytes;
-    for (my $child = 0; $child < $concurrency; $child++) {
-        if ($pm->start) {
-            warn "forks $child/$concurrency child ...\n";
-            next;
-        }
-            my $transfer = 0;
-            for (my $i = 0; $i < $loops; $i++) {
-                print STDERR "processing $i/$loops loop\r";
-                foreach my $url (@urls) {
-                    my $res = $ua->get($url);
-                    if ($res->is_success) {
-                        $transfer += length($res->content);
-                    }
-                    else {
-                        print STDERR "\nfail: $url";
-                    }
-                    sleep($wait);
+    if ($pm->start) {
+        # parent
+        warn "forks $child/$concurrency child ...\n";
+    }
+    else {
+        # child
+        my $transfer = 0;
+        for (my $i = 0; $i < $loops; $i++) {
+            print STDERR "processing $i/$loops loop\r";
+            foreach my $url (@urls) {
+                my $res = $ua->get($url);
+                if ($res->is_success) {
+                    $transfer += length($res->content);
                 }
+                else {
+                    print STDERR "\nfail: $url";
+                }
+                sleep($wait);
             }
+        }
         $pm->finish(0, \$transfer);
     }
-    $pm->wait_all_children;
 }
+$pm->wait_all_children;
 my ($endsec, $endmicro) = gettimeofday();
 my $elapsed = ($endsec - $startsec) + ($endmicro - $startmicro) / 10**6;
 my $bytepersec = $transfer / $elapsed;
