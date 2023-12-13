@@ -1,0 +1,142 @@
+#!/bin/sh
+
+set -u
+
+usage () {
+    cat <<'EOF'
+usage: $0 [-s size] [-t runtime] [-d directory] [-f filename]
+          [-i iteration] [-n] [-h]
+
+ -s: I/O size
+     default is 8G
+
+ -t: runtime
+     default is 10
+
+ -d: directory
+     override -f option
+
+ -f: filename
+
+ -i: iteration
+     default is 1
+
+ -n: dry-run
+     display fio command instead of actually executing it
+
+ -h: give this short usage
+
+fixed values
+--startdelay=5
+--ramp_time=1
+
+EOF
+}
+
+warn () {
+    >&2 echo "$0: $@"
+}
+
+isexist () {
+    [ -e "$1" ] && return 0
+    warn "$1 does not exist"
+    exit 1
+}
+
+
+# parse commandline arguments
+__BACKUPLIST=''
+while getopts "s:t:d:f:i:nh" OPT; do
+    case $OPT in
+        s)  SIZE="$OPTARG"
+            ;;
+        t)  RUNTIME="$OPTARG"
+            ;;
+        d)  DIRPATH="$OPTARG"
+            ;;
+        f)  FILEPATH="$OPTARG"
+            ;;
+        i)  ITERATION="$OPTARG"
+            ;;
+        n)  DRYRUN="true"
+            ;;
+        h)  usage
+            exit 0
+            ;;
+    esac
+done
+shift $(( $OPTIND - 1 ))
+
+
+# check configuration and set default
+checkvar () {
+    unset _checkvar
+    set +u
+    eval "_checkvar=\$$1"
+    set -u
+    if [ -z "$_checkvar" ]; then
+        if [ $# -eq 2 ]; then
+            eval "$1=\"$2\""
+        else
+            warn "$1 is need to be set"
+            exit 1
+        fi
+    fi
+}
+
+
+# check configrations and set default value if not yet
+set +u
+directory_or_filename="${DIRPATH}${FILEPATH}"
+set -u
+
+checkvar directory_or_filename
+checkvar DIRPATH ""
+checkvar FILEPATH ""
+
+checkvar SIZE "8G"
+checkvar RUNTIME "10"
+checkvar ITERATION "1"
+checkvar DRYRUN "false"
+
+
+# check dirpath and filepath
+if [ -n "$DIRPATH" ]; then
+    FILEPATH=""
+    if [ "$DRYRUN" != "true" ]; then
+        isexist "$DIRPATH"
+    fi
+fi
+if [ -n "$FILEPATH" ]; then
+    if [ "$DRYRUN" != "true" ]; then
+        isexist "$FILEPATH"
+    fi
+fi
+
+
+fio_fix="-f --ioengine=libaio --direct=1 --startdelay=5 --ramp_time=1 --stonewall"
+if [ -n "$DIRPATH" ]; then
+    fio_parm="--size=${SIZE} --runtime=${RUNTIME} --directory=${DIRPATH}"
+else
+    fio_parm="--size=${SIZE} --runtime=${RUNTIME} --filename=${FILEPATH}"
+fi
+
+for fio_job in \
+"--name=Seq-Read  --iodepth=1 --bs=1m --rw=read" \
+"--name=Seq-Write --iodepth=1 --bs=1m --rw=write" \
+"--name=Seq-Read-QD8  --iodepth=8 --bs=1m --rw=read" \
+"--name=Seq-Write-QD8 --iodepth=8 --bs=1m --rw=write" \
+"--name=Rand-Read-4K  --iodepth=1 --bs=4k --rw=randread" \
+"--name=Rand-Write-4K --iodepth=1 --bs=4k --rw=randwrite" \
+"--name=Rand-Read-4K-QD32  --iodepth=32 --bs=4k --rw=randread" \
+"--name=Rand-Write-4K-QD32 --iodepth=32 --bs=4k --rw=randwrite" \
+; do
+    fio_cmd="fio ${fio_fix} ${fio_parm} ${fio_job}"
+    for iter in `seq 1 ${ITERATION}`; do
+        if [ "$DRYRUN" = "true" ]; then
+            echo "$fio_cmd"
+        else
+            $fio_cmd
+        fi
+    done
+done
