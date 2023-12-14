@@ -120,7 +120,7 @@ if [ -n "$FILEPATH" ]; then
 fi
 
 
-fio_fix="-f --ioengine=libaio --direct=1 --startdelay=5 --ramp_time=1 --stonewall"
+fio_fix="-f --ioengine=libaio --direct=1 --startdelay=5 --ramp_time=1 --stonewall --group_reporting --thread"
 if [ "$UNLINK" = "true" ]; then
     fio_fix="${fio_fix} --unlink=1"
 fi
