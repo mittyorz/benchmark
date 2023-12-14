@@ -130,16 +130,17 @@ else
     fio_parm="--size=${SIZE} --runtime=${RUNTIME} --filename=${FILEPATH}"
 fi
 
-for fio_job in \
-"--name=Seq-Read  --iodepth=1 --bs=1m --rw=read" \
-"--name=Seq-Write --iodepth=1 --bs=1m --rw=write" \
-"--name=Seq-Read-QD8  --iodepth=8 --bs=1m --rw=read" \
-"--name=Seq-Write-QD8 --iodepth=8 --bs=1m --rw=write" \
-"--name=Rand-Read-4K  --iodepth=1 --bs=4k --rw=randread" \
-"--name=Rand-Write-4K --iodepth=1 --bs=4k --rw=randwrite" \
-"--name=Rand-Read-4K-QD32  --iodepth=32 --bs=4k --rw=randread" \
-"--name=Rand-Write-4K-QD32 --iodepth=32 --bs=4k --rw=randwrite" \
-; do
+jobs="\
+--name=Seq-Read  --iodepth=1 --bs=1m --rw=read
+--name=Seq-Write --iodepth=1 --bs=1m --rw=write
+--name=Seq-Read-QD8  --iodepth=8 --bs=1m --rw=read
+--name=Seq-Write-QD8 --iodepth=8 --bs=1m --rw=write
+--name=Rand-Read-4K  --iodepth=1 --bs=4k --rw=randread
+--name=Rand-Write-4K --iodepth=1 --bs=4k --rw=randwrite
+--name=Rand-Read-4K-QD32  --iodepth=32 --bs=4k --rw=randread
+--name=Rand-Write-4K-QD32 --iodepth=32 --bs=4k --rw=randwrite"
+
+echo "$jobs" | while read -r fio_job; do
     fio_cmd="fio ${fio_fix} ${fio_parm} ${fio_job}"
     for iter in `seq 1 ${ITERATION}`; do
         if [ "$DRYRUN" = "true" ]; then
