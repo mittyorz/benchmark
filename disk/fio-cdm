@@ -4,7 +4,7 @@ set -u
 
 usage () {
     cat <<'EOF'
-usage: $0 [p profile] [-s size] [-t runtime] [-d directory] [-f filename]
+usage: $0 [-p profile] [-s size] [-t runtime] [-d directory] [-f filename]
           [-i iteration] [-n] [-h]
 
  -p: select profile from 'default' or 'nvme'
@@ -51,7 +51,6 @@ isexist () {
 
 
 # parse commandline arguments
-__BACKUPLIST=''
 while getopts "p:s:t:d:f:i:unh" OPT; do
     case $OPT in
         p)  PROFILE="$OPTARG"
