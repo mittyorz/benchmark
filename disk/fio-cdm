@@ -4,8 +4,11 @@ set -u
 
 usage () {
     cat <<'EOF'
-usage: $0 [-s size] [-t runtime] [-d directory] [-f filename]
+usage: $0 [p profile] [-s size] [-t runtime] [-d directory] [-f filename]
           [-i iteration] [-n] [-h]
+
+ -p: select profile from 'default' or 'nvme'
+     default is 'default'
 
  -s: I/O size
      default is 8G
@@ -49,8 +52,10 @@ isexist () {
 
 # parse commandline arguments
 __BACKUPLIST=''
-while getopts "s:t:d:f:i:unh" OPT; do
+while getopts "p:s:t:d:f:i:unh" OPT; do
     case $OPT in
+        p)  PROFILE="$OPTARG"
+            ;;
         s)  SIZE="$OPTARG"
             ;;
         t)  RUNTIME="$OPTARG"
@@ -99,6 +104,7 @@ checkvar directory_or_filename
 checkvar DIRPATH ""
 checkvar FILEPATH ""
 
+checkvar PROFILE "default"
 checkvar SIZE "8G"
 checkvar RUNTIME "10"
 checkvar ITERATION "1"
@@ -130,7 +136,18 @@ else
     fio_parm="--size=${SIZE} --runtime=${RUNTIME} --filename=${FILEPATH}"
 fi
 
-jobs="\
+if [ "$PROFILE" = "nvme" ]; then
+    jobs="\
+--name=Seq-Read-QD8  --iodepth=8 --bs=1m --rw=read
+--name=Seq-Write-QD8 --iodepth=8 --bs=1m --rw=write
+--name=Seq-Read-128k-QD32  --iodepth=32 --bs=128k --rw=read
+--name=Seq-Write-128k-QD32 --iodepth=32 --bs=128k --rw=write
+--name=Rand-Read-4K  --iodepth=1 --bs=4k --rw=randread
+--name=Rand-Write-4K --iodepth=1 --bs=4k --rw=randwrite
+--name=Rand-Read-4K-QD32-T16  --iodepth=32 --bs=4k --rw=randread --numjobs=16
+--name=Rand-Write-4K-QD32-T16 --iodepth=32 --bs=4k --rw=randwrite --numjobs=16"
+else
+    jobs="\
 --name=Seq-Read  --iodepth=1 --bs=1m --rw=read
 --name=Seq-Write --iodepth=1 --bs=1m --rw=write
 --name=Seq-Read-QD8  --iodepth=8 --bs=1m --rw=read
@@ -139,6 +156,7 @@ jobs="\
 --name=Rand-Write-4K --iodepth=1 --bs=4k --rw=randwrite
 --name=Rand-Read-4K-QD32  --iodepth=32 --bs=4k --rw=randread
 --name=Rand-Write-4K-QD32 --iodepth=32 --bs=4k --rw=randwrite"
+fi
 
 echo "$jobs" | while read -r fio_job; do
     fio_cmd="fio ${fio_fix} ${fio_parm} ${fio_job}"
