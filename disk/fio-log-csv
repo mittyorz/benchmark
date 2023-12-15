@@ -1,0 +1,89 @@
+#!/bin/sh
+
+set -u
+
+usage () {
+    cat <<EOF
+usage: $0 [-f format] [-n] path/to/file
+
+ -f: csv format
+     default is 'cdm'
+
+ -n: no csv header output
+
+format list
+- 'cdm': jobname,bandwidth_mb,iops,clat_mean_us
+- 'verbose': fio_version,jobname,read_bandwidth_kb,read_iops,read_clat_mean_us,write_bandwidth_kb,write_iops,write_clat_mean_us,cpu_user,cpu_sys,disk_util
+EOF
+}
+
+if [ $# -eq 0 ]; then
+    usage
+    exit 1
+fi
+
+warn () {
+    >&2 echo "$0: $@"
+}
+
+isexist () {
+    [ -e "$1" ] && return 0
+    warn "$1 does not exist"
+    exit 1
+}
+
+
+# parse commandline arguments
+while getopts "f:n" OPT; do
+    case $OPT in
+        f)  FORMAT="$OPTARG"
+            ;;
+        n)  NOHEADER="true"
+            ;;
+    esac
+done
+shift $(( $OPTIND - 1 ))
+
+LOGFILE="$1"
+
+
+# check configuration and set default
+checkvar () {
+    unset _checkvar
+    set +u
+    eval "_checkvar=\$$1"
+    set -u
+    if [ -z "$_checkvar" ]; then
+        if [ $# -eq 2 ]; then
+            eval "$1=\"$2\""
+        else
+            warn "$1 is need to be set"
+            exit 1
+        fi
+    fi
+}
+
+
+# check configrations and set default value if not yet
+checkvar FORMAT "cdm"
+checkvar NOHEADER "false"
+
+
+isexist "$LOGFILE"
+
+
+if [ "$FORMAT" = "cdm" ]; then
+    header='jobname,bandwidth_mb,iops,clat_mean_us'
+    awk_arg='{printf "%s,%.3f,%.1f,%.2f\n", $3,($7+$48)*1024/1000/1000,$8+$49,$16+$57}'
+elif [ "$FORMAT" = "verbose" ]; then
+    header="fio_version,jobname,read_bandwidth_kb,read_iops,read_clat_mean_us,write_bandwidth_kb,write_iops,write_clat_mean_us,cpu_user,cpu_sys,disk_util"
+    awk_arg='{print $2,$3,$7,$8,$16,$48,$49,$57,$88,$89,$130}'
+else
+    usage
+    exit 1
+fi
+
+if [ "$NOHEADER" != "true" ]; then
+    echo "$header"
+fi
+cat "$LOGFILE" | grep "3;$(fio -v);" | awk -F ";" -v "OFS=," "$awk_arg"
