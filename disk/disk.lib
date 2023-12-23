@@ -1,0 +1,152 @@
+function msg () {
+    echo -n `date "+[%Y%m%d %H:%M:%S.%3N]"`
+    echo -n " "
+    echo ${1}
+}
+
+function execute () {
+    msg "execute '$*'"
+    $@
+}
+
+function get_sectorsize () {
+    devname="$1"
+
+    cat /sys/block/${devname}/queue/physical_block_size
+}
+
+function get_partname () {
+    devname="$1"
+
+    __name=$(udevadm info --query=all --name=/dev/${devname} | grep ID_SERIAL_SHORT | cut -d= -f2)
+    if [ -z "$__name" ]; then
+        __name=$(udevadm info --query=all --name=/dev/${devname} | grep ID_SERIAL | cut -d= -f2)
+    fi
+
+    echo ${__name}
+}
+
+function normalize_partsize () {
+    partsize="$1"
+
+    echo $partsize | tr '[a-z]' '[A-Z]' | numfmt --from=iec
+}
+
+function create_gpt () {
+    devname="$1"
+    partsize="$2"
+    parttype="$3"
+
+    sectorsize=$(get_sectorsize $devname)
+    partname=$(get_partname $devname)
+
+    partsize=$(normalize_partsize $partsize)
+    endofsector=$(expr $partsize / $sectorsize + 2048 - 1)
+
+    execute sgdisk -n 1:2048:${endofsector} -t 1:$parttype -c 1:$partname /dev/$devname
+}
+
+function print_system_info () {
+    execute uname -a
+    execute lscpu
+    execute lsmem
+    execute lspci
+    execute lspci -tvv
+    execute lsblk
+}
+
+function print_disk_info () {
+    disks="$*"
+
+    byid=$(ls -l /dev/disk/by-id)
+    bypath=$(ls -l /dev/disk/by-path)
+    msg "disk '${disks}' in /dev/disk/by-id and /dev/disk/by-path"
+    echo "/dev/disk/by-id"
+    for d in ${disks}; do
+        echo "${byid}" | grep -E "${d}$"
+    done
+    echo "/dev/disk/by-path"
+    for d in ${disks}; do
+        echo "${bypath}" | grep -E "${d}$"
+    done
+}
+
+function print_md_version () {
+    execute modinfo md
+}
+
+function print_md_info () {
+    devname="$1"
+
+    execute cat /proc/mdstat
+    execute mdadm --detail /dev/${devname}
+}
+
+function print_zfs_version () {
+    execute zfs version
+    execute modinfo -n zfs
+    execute modinfo -F srcversion zfs
+}
+
+function print_zfs_info () {
+    devname="$1"
+
+    execute zpool list -v
+    execute zpool get all
+    execute zfs list -t all -o mountpoint,space,compression,compressratio,checksum
+    execute zfs get all
+}
+
+function create_md () {
+    devname="$1"
+    level="$2"
+    devnum="$3"
+    shift 3
+    disks="$*"
+
+    diskparts=""
+    for d in ${disks}; do
+        create_gpt $d 128G FD00
+        diskparts="${diskparts} /dev/${d}"
+    done
+
+    execute mdadm --create /dev/${devname} --verbose --level=${level} --raid-devices=${devnum} ${diskparts}
+}
+
+function wait_md_syncing () {
+    devname="$1"
+
+    if [ ! -d /sys/block/${devname}/md ]; then
+        msg "no md array '${devname}' is not found"
+        return 1
+    fi
+
+    while : ;do
+        status=$(cat /sys/block/${devname}/md/sync_completed)
+        if [ "$status" = "none" ]; then
+            break
+        fi
+        sleep 1
+    done
+}
+
+function create_zfs () {
+    execute $@
+}
+
+function zpoolstatuscheck () {
+    pool="$1"
+
+    statematch='DEGRADED|DESTROYED|EXPORTED|FAULTED|L2CACHE|POTENTIALLY_ACTIVE|REMOVED|SPARE|SPLIT|UNAVAIL|UNINITIALIZED|UNKNOWN'
+    actionmatch='action:|status:'
+
+    DEVSTATE=$(zpool status ${pool} | grep -E --only-matching --max-count=1 "${statematch}")
+    ACTNEED=$(zpool status ${pool} | grep -E --only-matching --max-count=1 "${actionmatch}")
+
+    if [ -z "${DEVSTATE}" -a -z "${ACTNEED}" ]; then
+        return 0
+    else
+        execute zpool status ${pool}
+        return 1
+    fi
+}
