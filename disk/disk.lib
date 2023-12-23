@@ -150,3 +150,25 @@ function zpoolstatuscheck () {
         return 1
     fi
 }
+
+function destroy_md () {
+    devname="$1"
+
+    execute mdadm --stop /dev/${devname}
+}
+
+function destroy_zfs () {
+    devname="$1"
+
+    execute zpool destroy ${devname}
+}
+
+function wipe_device () {
+    devname="$1"
+
+    for dev in $(lsblk -n -l --all --shell -o name /dev/${devname} | sort -r); do
+        execute mdadm --zero-superblock --force ${dev}
+        execute zpool labelclear ${dev}
+        wipefs -a ${dev}
+    done
+}
