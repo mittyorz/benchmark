@@ -1,5 +1,5 @@
 function msg () {
-    echo -n `date "+[%Y%m%d %H:%M:%S.%3N]"`
+    echo -n $(date "+[%Y%m%d %H:%M:%S.%3N]")
     echo -n " "
     echo ${1}
 }
