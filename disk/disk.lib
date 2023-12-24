@@ -167,8 +167,8 @@ function wipe_device () {
     devname="$1"
 
     for dev in $(lsblk -n -l --all --shell -o name /dev/${devname} | sort -r); do
-        execute mdadm --zero-superblock --force ${dev}
-        execute zpool labelclear ${dev}
-        wipefs -a ${dev}
+        execute mdadm --zero-superblock --force /dev/${dev}
+        execute zpool labelclear -f /dev/${dev}
+        wipefs -a /dev/${dev}
     done
 }
