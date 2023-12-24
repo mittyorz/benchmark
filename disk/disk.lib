@@ -95,6 +95,7 @@ function print_zfs_info () {
     execute zpool get all
     execute zfs list -t all -o mountpoint,space,compression,compressratio,checksum
     execute zfs get all
+    execute df -h
 }
 
 function create_md () {
@@ -151,6 +152,32 @@ function zpoolstatuscheck () {
     fi
 }
 
+function create_ext4 () {
+    devname="$1"
+
+    execute mkfs.ext4 -F -E lazy_itable_init=0,lazy_journal_init=0 -m 1 /dev/${devname}
+}
+
+function mount_ext4 () {
+    devname="$1"
+    mountpoint="$2"
+
+    execute mount -t ext4 -o rw,relatime,data=ordered /dev/${devname} ${mountpoint}
+}
+
+function umount_ext4 () {
+    mountpoint="$1"
+
+    execute umount ${mountpoint}
+}
+
+function print_ext4_info () {
+    devname="$1"
+
+    execute tune2fs -l /dev/{$devname}
+    execute df -h
+}
+
 function destroy_md () {
     devname="$1"
 
@@ -169,6 +196,15 @@ function wipe_device () {
     for dev in $(lsblk -n -l --all --shell -o name /dev/${devname} | sort -r); do
         execute mdadm --zero-superblock --force /dev/${dev}
         execute zpool labelclear -f /dev/${dev}
-        wipefs -a /dev/${dev}
+        execute wipefs -a /dev/${dev}
     done
+}
+
+function get_fio_logfilename () {
+    prefix="$1"
+    devname="$2"
+
+    ymdhms=$(date "+%Y%m%dT%H%M%S.%3N")
+
+    echo "${prefix}-${devname}-${ymdhms}.log"
 }
