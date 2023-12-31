@@ -270,15 +270,27 @@ function start_dstat () {
     exec_bg_job pcp dstat -t -c -m -d -D total,${devices} --output "$csv"
 }
 
-function start_dstat_md () {
-    local csv mddevice devices
+function start_dstat_md0 () {
+    local csv md0device devices
     csv="$1"
-    mddevice="$2"
+    md0device="$2"
     shift 2
     devices="$*"
 
     devices=$(spacetocsv "$devices")
-    exec_bg_job pcp dstat -t -c -m -d -D total,${devices} --md -M total,${mddevice} --output "$csv"
+    exec_bg_job pcp dstat -t -c -m -d -D total,${devices} --md -M total,${md0device} --output "$csv"
+}
+
+function start_dstat_md1 () {
+    local csv md0device md1device devices
+    csv="$1"
+    md0device="$2"
+    mdd1evice="$3"
+    shift 3
+    devices="$*"
+
+    devices=$(spacetocsv "$devices")
+    exec_bg_job pcp dstat -t -c -m -d -D total,${devices} --md -M total,${md0device},${mdd1evice} --output "$csv"
 }
 
 function kill_dstat () {
