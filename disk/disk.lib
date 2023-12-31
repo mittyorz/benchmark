@@ -149,17 +149,12 @@ function wait_md_syncing () {
         return 1
     fi
     if [ ! -f /sys/block/${devname}/md/sync_completed ]; then
-        # ${devname} is stripe (raid0)
+        # ${devname} may be stripe (raid0)
         return 0
     fi
 
-    while : ;do
-        status=$(cat /sys/block/${devname}/md/sync_completed)
-        if [ "$status" = "none" ]; then
-            break
-        fi
-        sleep 1
-    done
+    # 'mdadm --wait' return with 1 when ${devname} is raid0
+    mdadm --wait /dev/${devname}
 }
 
 function create_zfs () {
@@ -179,6 +174,7 @@ function zpoolstatuscheck () {
     if [ -z "${DEVSTATE}" -a -z "${ACTNEED}" ]; then
         return 0
     else
+        msg "something wrong on '${pool}'"
         execute zpool status ${pool}
         return 1
     fi
@@ -205,7 +201,7 @@ function umount_ext4 () {
     mountpoint="$1"
 
     execute umount ${mountpoint}
-    execute rmdir -p ${mountpoint}
+    execute rmdir -p ${mountpoint} || true
 }
 
 function print_ext4_info () {
@@ -237,7 +233,8 @@ function wipe_devices () {
     for d in ${devices}; do
         for dev in $(lsblk -n -l --all --shell -o name /dev/${d} | sort -r); do
             execute mdadm --zero-superblock --force /dev/${dev}
-            execute zpool labelclear -f /dev/${dev}
+            # 'zpool labelclear' may return with none-zero
+            execute zpool labelclear -f /dev/${dev} || true
             execute wipefs -a /dev/${dev}
         done
     done
