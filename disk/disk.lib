@@ -125,9 +125,9 @@ function create_md () {
     local devname level devnum size devices diskparts d
     devname="$1"
     level="$2"
-    devnum="$3"
-    size="$4"
-    shift 4
+    size="$3"
+    shift 3
+    devnum=$#
     devices="$*"
 
     diskparts=""
