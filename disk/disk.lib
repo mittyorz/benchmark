@@ -196,6 +196,7 @@ function mount_ext4 () {
     devname="$1"
     mountpoint="$2"
 
+    execute mkdir -p ${mountpoint}
     execute mount -t ext4 -o rw,relatime,data=ordered /dev/${devname} ${mountpoint}
 }
 
@@ -204,13 +205,14 @@ function umount_ext4 () {
     mountpoint="$1"
 
     execute umount ${mountpoint}
+    execute rmdir -p ${mountpoint}
 }
 
 function print_ext4_info () {
     local devname
     devname="$1"
 
-    execute tune2fs -l /dev/{$devname}
+    execute tune2fs -l /dev/${devname}
     execute df -h
 }
 
