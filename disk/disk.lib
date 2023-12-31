@@ -65,19 +65,28 @@ function print_system_info () {
 }
 
 function print_disk_info () {
-    local disks byid bypath d
-    disks="$*"
+    local devices byid bypath d
+    devices="$*"
 
     byid=$(ls -l /dev/disk/by-id)
     bypath=$(ls -l /dev/disk/by-path)
-    msg "disk '${disks}' in /dev/disk/by-id and /dev/disk/by-path"
+    msg "disk '${devices}' in /dev/disk/by-id and /dev/disk/by-path"
     echo "/dev/disk/by-id"
-    for d in ${disks}; do
+    for d in ${devices}; do
         echo "${byid}" | grep -E "${d}$"
     done
     echo "/dev/disk/by-path"
-    for d in ${disks}; do
+    for d in ${devices}; do
         echo "${bypath}" | grep -E "${d}$"
+    done
+}
+
+function print_diskpart_info () {
+    local devices d
+    devices="$*"
+
+    for d in ${devices}; do
+        execute gdisk -l /dev/${d}
     done
 }
 
@@ -108,18 +117,18 @@ function print_zfs_info () {
 }
 
 function create_md () {
-    local devname level devnum size disks diskparts d
+    local devname level devnum size devices diskparts d
     devname="$1"
     level="$2"
     devnum="$3"
     size="$4"
     shift 4
-    disks="$*"
+    devices="$*"
 
     diskparts=""
-    for d in ${disks}; do
+    for d in ${devices}; do
         create_gpt $d ${size} FD00
-        diskparts="${diskparts} /dev/${d}"
+        diskparts="${diskparts} /dev/${d}1"
     done
 
     execute mdadm --create /dev/${devname} --verbose --level=${level} --raid-devices=${devnum} ${diskparts}
@@ -129,9 +138,14 @@ function wait_md_syncing () {
     local devname status
     devname="$1"
 
+    sleep 1
     if [ ! -d /sys/block/${devname}/md ]; then
         msg "no md array '${devname}' is not found"
         return 1
+    fi
+    if [ ! -f /sys/block/${devname}/md/sync_completed ]; then
+        # ${devname} is stripe (raid0)
+        return 0
     fi
 
     while : ;do
@@ -209,14 +223,16 @@ function destroy_zfs () {
     execute zpool destroy ${pool}
 }
 
-function wipe_device () {
-    local devname dev
-    devname="$1"
+function wipe_devices () {
+    local devices d dev
+    devices="$*"
 
-    for dev in $(lsblk -n -l --all --shell -o name /dev/${devname} | sort -r); do
-        execute mdadm --zero-superblock --force /dev/${dev}
-        execute zpool labelclear -f /dev/${dev}
-        execute wipefs -a /dev/${dev}
+    for d in ${devices}; do
+        for dev in $(lsblk -n -l --all --shell -o name /dev/${d} | sort -r); do
+            execute mdadm --zero-superblock --force /dev/${dev}
+            execute zpool labelclear -f /dev/${dev}
+            execute wipefs -a /dev/${dev}
+        done
     done
 }
 
@@ -227,7 +243,7 @@ function get_logfilename () {
 
     ymdhms=$(date "+%Y%m%dT%H%M%S.%3N")
 
-    echo "${prefix}-${ymdhms}.${ext}"
+    echo "${prefix}.${ymdhms}.${ext}"
 }
 
 function spacetocsv () {
