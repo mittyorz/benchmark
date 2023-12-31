@@ -9,6 +9,11 @@ function execute () {
     $@
 }
 
+function execute_yes () {
+    msg "execute '$*' with yes"
+    yes | $@
+}
+
 function exec_bg_job () {
     msg "execute '$*' in background"
     ($@) &
@@ -131,7 +136,7 @@ function create_md () {
         diskparts="${diskparts} /dev/${d}1"
     done
 
-    execute mdadm --create /dev/${devname} --verbose --level=${level} --raid-devices=${devnum} ${diskparts}
+    execute_yes mdadm --create /dev/${devname} --verbose --level=${level} --raid-devices=${devnum} ${diskparts}
 }
 
 function wait_md_syncing () {
