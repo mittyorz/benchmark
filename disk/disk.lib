@@ -118,6 +118,7 @@ function print_zfs_version () {
 
 function print_zfs_info () {
     execute zdb -C
+    execute zpool status
     execute zpool list -v
     execute zpool get all
     execute zfs list -t all -o mountpoint,space,compression,compressratio,checksum
