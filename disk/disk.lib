@@ -84,6 +84,9 @@ function print_disk_info () {
     for d in ${devices}; do
         echo "${bypath}" | grep -E "${d}$"
     done
+    for d in ${devices}; do
+        execute fdisk -l /dev/${d}
+    done
 }
 
 function print_diskpart_info () {
@@ -114,6 +117,7 @@ function print_zfs_version () {
 }
 
 function print_zfs_info () {
+    execute zdb -C
     execute zpool list -v
     execute zpool get all
     execute zfs list -t all -o mountpoint,space,compression,compressratio,checksum
@@ -155,6 +159,20 @@ function wait_md_syncing () {
 
     # 'mdadm --wait' return with 1 when ${devname} is raid0
     mdadm --wait /dev/${devname}
+}
+
+function get_ashift () {
+    local devname blocksize
+    devname="$1"
+
+    blocksize=$(blockdev --getpbsz /dev/${devname})
+    if [ "$blocksize" = "512" ]; then
+        echo "9"
+    elif [ "$blocksize" = "4096" ]; then
+        echo "12"
+    else
+        return 1
+    fi
 }
 
 function create_zfs () {
@@ -291,5 +309,6 @@ function start_dstat_md1 () {
 }
 
 function kill_dstat () {
+    execute sleep 5
     execute pkill python3
 }
