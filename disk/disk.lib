@@ -6,17 +6,17 @@ function msg () {
 
 function execute () {
     msg "execute '$*'"
-    $@
+    "$@"
 }
 
 function execute_yes () {
     msg "execute '$*' with yes"
-    yes | $@
+    yes | "$@"
 }
 
 function exec_bg_job () {
     msg "execute '$*' in background"
-    ($@) &
+    ("$@") &
 }
 
 function get_sectorsize () {
@@ -117,6 +117,8 @@ function print_zfs_version () {
 }
 
 function print_zfs_info () {
+    ZPOOL_SCRIPTS_AS_ROOT=1
+    export ZPOOL_SCRIPTS_AS_ROOT
     execute zdb -C
     execute zpool status -c lsblk
     execute zpool list -v
@@ -179,7 +181,7 @@ function get_ashift () {
 }
 
 function create_zfs () {
-    execute $@
+    execute "$@"
     execute zpool sync
 }
 
