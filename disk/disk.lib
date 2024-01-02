@@ -118,7 +118,7 @@ function print_zfs_version () {
 
 function print_zfs_info () {
     execute zdb -C
-    execute zpool status
+    execute zpool status -c lsblk
     execute zpool list -v
     execute zpool get all
     execute zfs list -t all -o mountpoint,space,compression,compressratio,checksum
@@ -160,6 +160,8 @@ function wait_md_syncing () {
 
     # 'mdadm --wait' return with 1 when ${devname} is raid0
     mdadm --wait /dev/${devname}
+    # wait another 5 sec for I/O to settle down
+    sleep 5
 }
 
 function get_ashift () {
@@ -178,6 +180,7 @@ function get_ashift () {
 
 function create_zfs () {
     execute $@
+    execute zpool sync
 }
 
 function zpoolstatuscheck () {
@@ -310,6 +313,7 @@ function start_dstat_md1 () {
 }
 
 function kill_dstat () {
-    execute sleep 5
+    # wait 5 sec for I/O to settle down
+    sleep 5
     execute pkill python3
 }
