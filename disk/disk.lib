@@ -34,6 +34,9 @@ function get_partname () {
     if [ -z "$name" ]; then
         name=$(udevadm info --query=all --name=/dev/${devname} | grep ID_SERIAL | cut -d= -f2)
     fi
+    if [ -z "$name" ]; then
+        name="${devname}"
+    fi
 
     echo ${name}
 }
@@ -147,21 +150,25 @@ function create_md () {
 }
 
 function wait_md_syncing () {
-    local devname status
-    devname="$1"
+    local devices d devpath
+    devices="$@"
 
     sleep 1
-    if [ ! -d /sys/block/${devname}/md ]; then
-        msg "no md array '${devname}' is not found"
-        return 1
-    fi
-    if [ ! -f /sys/block/${devname}/md/sync_completed ]; then
-        # ${devname} may be stripe (raid0)
-        return 0
-    fi
+    devpath=""
+    for d in ${devices}; do
+        if [ ! -d /sys/block/${d}/md ]; then
+            msg "no md array '${d}' is not found"
+            return 1
+        fi
+        if [ ! -f /sys/block/${d}/md/sync_completed ]; then
+            # ${d} may be stripe (raid0)
+            # 'mdadm --wait' return with 1 when /dev/${d} is raid0
+            continue
+        fi
+        devpath="${devpath} /dev/${d}"
+    done
 
-    # 'mdadm --wait' return with 1 when ${devname} is raid0
-    mdadm --wait /dev/${devname}
+    mdadm --wait ${devpath}
     # wait another 5 sec for I/O to settle down
     sleep 5
 }
