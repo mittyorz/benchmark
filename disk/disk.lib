@@ -19,13 +19,6 @@ function exec_bg_job () {
     ("$@") &
 }
 
-function get_sectorsize () {
-    local devname
-    devname="$1"
-
-    cat /sys/block/${devname}/queue/physical_block_size
-}
-
 function get_partname () {
     local devname name
     devname="$1"
@@ -41,26 +34,15 @@ function get_partname () {
     echo ${name}
 }
 
-function normalize_partsize () {
-    local partsize
-    partsize="$1"
-
-    echo $partsize | tr '[a-z]' '[A-Z]' | numfmt --from=iec
-}
-
 function create_gpt () {
     local devname partsize parttype sectorsize partname endofsector
     devname="$1"
     partsize="$2"
     parttype="$3"
 
-    sectorsize=$(get_sectorsize $devname)
     partname=$(get_partname $devname)
 
-    partsize=$(normalize_partsize $partsize)
-    endofsector=$(expr $partsize / $sectorsize + 2048 - 1)
-
-    execute sgdisk -n 1:2048:${endofsector} -t 1:$parttype -c 1:$partname /dev/$devname
+    execute sgdisk -n 1:2048:+${partsize} -t 1:$parttype -c 1:$partname /dev/$devname
 }
 
 function print_system_info () {
@@ -168,6 +150,10 @@ function wait_md_syncing () {
         devpath="${devpath} /dev/${d}"
     done
 
+    if [ -z "${devpath}" ]; then
+        # there is no mdraid device except raid0
+        return 0
+    fi
     mdadm --wait ${devpath}
     # wait another 5 sec for I/O to settle down
     sleep 5
