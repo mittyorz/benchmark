@@ -312,3 +312,19 @@ function kill_dstat () {
     sleep 5
     execute pkill python3
 }
+
+function check_executable () {
+    local commands cmd err
+    commands="$@"
+
+    err=0
+    for cmd in ${commands}; do
+        if ! command -v $cmd &> /dev/null; then
+            msg "command '${cmd}' could not be found"
+            err=1
+        fi
+    done
+    if [ $err -eq 1 ]; then
+        exit 1
+    fi
+}

@@ -315,6 +315,9 @@ function fio_10 {
 
 
 
+check_executable lscpu lsmem lspci lsblk udevadm blockdev fdisk gdisk \
+    sgdisk mdadm tune2fs zfs wipefs pcp fio
+
 systeminfo=$(get_logfilename systeminfo txt)
 
 print_system_info >> "$systeminfo"
