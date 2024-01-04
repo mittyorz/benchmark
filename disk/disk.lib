@@ -1,0 +1,314 @@
+function msg () {
+    echo -n $(date "+[%Y%m%d %H:%M:%S.%3N]")
+    echo -n " "
+    echo ${1}
+}
+
+function execute () {
+    msg "execute '$*'"
+    "$@"
+}
+
+function execute_yes () {
+    msg "execute '$*' with yes"
+    yes | "$@"
+}
+
+function exec_bg_job () {
+    msg "execute '$*' in background"
+    ("$@") &
+}
+
+function get_partname () {
+    local devname name
+    devname="$1"
+
+    name=$(udevadm info --query=all --name=/dev/${devname} | grep ID_SERIAL_SHORT | cut -d= -f2)
+    if [ -z "$name" ]; then
+        name=$(udevadm info --query=all --name=/dev/${devname} | grep ID_SERIAL | cut -d= -f2)
+    fi
+    if [ -z "$name" ]; then
+        name="${devname}"
+    fi
+
+    echo ${name}
+}
+
+function create_gpt () {
+    local devname partsize parttype sectorsize partname endofsector
+    devname="$1"
+    partsize="$2"
+    parttype="$3"
+
+    partname=$(get_partname $devname)
+
+    execute sgdisk -n 1:2048:+${partsize} -t 1:$parttype -c 1:$partname /dev/$devname
+}
+
+function print_system_info () {
+    execute uname -a
+    execute lscpu
+    execute lsmem
+    execute lspci
+    execute lspci -tvv
+    execute lsblk
+}
+
+function print_disk_info () {
+    local devices byid bypath d
+    devices="$*"
+
+    byid=$(ls -l /dev/disk/by-id)
+    bypath=$(ls -l /dev/disk/by-path)
+    msg "disk '${devices}' in /dev/disk/by-id and /dev/disk/by-path"
+    echo "/dev/disk/by-id"
+    for d in ${devices}; do
+        echo "${byid}" | grep -E "${d}$"
+    done
+    echo "/dev/disk/by-path"
+    for d in ${devices}; do
+        echo "${bypath}" | grep -E "${d}$"
+    done
+    for d in ${devices}; do
+        execute fdisk -l /dev/${d}
+    done
+}
+
+function print_diskpart_info () {
+    local devices d
+    devices="$*"
+
+    for d in ${devices}; do
+        execute gdisk -l /dev/${d}
+    done
+}
+
+function print_md_version () {
+    execute modinfo md
+}
+
+function print_md_info () {
+    local devname
+    devname="$1"
+
+    execute cat /proc/mdstat
+    execute mdadm --detail /dev/${devname}
+}
+
+function print_zfs_version () {
+    execute zfs version
+    execute modinfo -n zfs
+    execute modinfo -F srcversion zfs
+}
+
+function print_zfs_info () {
+    ZPOOL_SCRIPTS_AS_ROOT=1
+    export ZPOOL_SCRIPTS_AS_ROOT
+    execute zdb -C
+    execute zpool status -c lsblk
+    execute zpool list -v
+    execute zpool get all
+    execute zfs list -t all -o mountpoint,space,compression,compressratio,checksum
+    execute zfs get all
+    execute df -h
+}
+
+function create_md () {
+    local devname level devnum size devices diskparts d
+    devname="$1"
+    level="$2"
+    size="$3"
+    shift 3
+    devnum=$#
+    devices="$*"
+
+    diskparts=""
+    for d in ${devices}; do
+        create_gpt $d ${size} FD00
+        diskparts="${diskparts} /dev/${d}1"
+    done
+
+    execute_yes mdadm --create /dev/${devname} --verbose --level=${level} --raid-devices=${devnum} ${diskparts}
+}
+
+function wait_md_syncing () {
+    local devices d devpath
+    devices="$@"
+
+    sleep 1
+    devpath=""
+    for d in ${devices}; do
+        if [ ! -d /sys/block/${d}/md ]; then
+            msg "no md array '${d}' is not found"
+            return 1
+        fi
+        if [ ! -f /sys/block/${d}/md/sync_completed ]; then
+            # ${d} may be stripe (raid0)
+            # 'mdadm --wait' return with 1 when /dev/${d} is raid0
+            continue
+        fi
+        devpath="${devpath} /dev/${d}"
+    done
+
+    if [ -z "${devpath}" ]; then
+        # there is no mdraid device except raid0
+        return 0
+    fi
+    mdadm --wait ${devpath}
+    # wait another 5 sec for I/O to settle down
+    sleep 5
+}
+
+function get_ashift () {
+    local devname blocksize
+    devname="$1"
+
+    blocksize=$(blockdev --getpbsz /dev/${devname})
+    if [ "$blocksize" = "512" ]; then
+        echo "9"
+    elif [ "$blocksize" = "4096" ]; then
+        echo "12"
+    else
+        return 1
+    fi
+}
+
+function create_zfs () {
+    execute "$@"
+    execute zpool sync
+}
+
+function zpoolstatuscheck () {
+    local pool statematch actionmatch DEVSTATE ACTNEED
+    pool="$1"
+
+    statematch='DEGRADED|DESTROYED|EXPORTED|FAULTED|L2CACHE|POTENTIALLY_ACTIVE|REMOVED|SPARE|SPLIT|UNAVAIL|UNINITIALIZED|UNKNOWN'
+    actionmatch='action:|status:'
+
+    DEVSTATE=$(zpool status ${pool} | grep -E --only-matching --max-count=1 "${statematch}")
+    ACTNEED=$(zpool status ${pool} | grep -E --only-matching --max-count=1 "${actionmatch}")
+
+    if [ -z "${DEVSTATE}" -a -z "${ACTNEED}" ]; then
+        return 0
+    else
+        msg "something wrong on '${pool}'"
+        execute zpool status ${pool}
+        return 1
+    fi
+}
+
+function create_ext4 () {
+    local devname
+    devname="$1"
+
+    execute mkfs.ext4 -F -E lazy_itable_init=0,lazy_journal_init=0 -m 1 /dev/${devname}
+}
+
+function mount_ext4 () {
+    local devname mountpoint
+    devname="$1"
+    mountpoint="$2"
+
+    execute mkdir -p ${mountpoint}
+    execute mount -t ext4 -o rw,relatime,data=ordered /dev/${devname} ${mountpoint}
+}
+
+function umount_ext4 () {
+    local mountpoint
+    mountpoint="$1"
+
+    execute umount ${mountpoint}
+    execute rmdir -p ${mountpoint} || true
+}
+
+function print_ext4_info () {
+    local devname
+    devname="$1"
+
+    execute tune2fs -l /dev/${devname}
+    execute df -h
+}
+
+function destroy_md () {
+    local devname
+    devname="$1"
+
+    execute mdadm --stop /dev/${devname}
+}
+
+function destroy_zfs () {
+    local pool
+    pool="$1"
+
+    execute zpool destroy ${pool}
+}
+
+function wipe_devices () {
+    local devices d dev
+    devices="$*"
+
+    for d in ${devices}; do
+        for dev in $(lsblk -n -l --all --shell -o name /dev/${d} | sort -r); do
+            execute mdadm --zero-superblock --force /dev/${dev}
+            # 'zpool labelclear' may return with none-zero
+            execute zpool labelclear -f /dev/${dev} || true
+            execute wipefs -a /dev/${dev}
+        done
+    done
+}
+
+function get_logfilename () {
+    local prefix ext ymdhms
+    prefix="$1"
+    ext="$2"
+
+    ymdhms=$(date "+%Y%m%dT%H%M%S.%3N")
+
+    echo "${prefix}.${ymdhms}.${ext}"
+}
+
+function spacetocsv () {
+    local string
+    string="$1"
+
+    echo "${string}" | sed -e 's/\t/,/g' -e 's/  */,/g'
+}
+
+function start_dstat () {
+    local csv devices
+    csv="$1"
+    shift 1
+    devices="$*"
+
+    devices=$(spacetocsv "$devices")
+    exec_bg_job pcp dstat -t -c -m -d -D total,${devices} --output "$csv"
+}
+
+function start_dstat_md0 () {
+    local csv md0device devices
+    csv="$1"
+    md0device="$2"
+    shift 2
+    devices="$*"
+
+    devices=$(spacetocsv "$devices")
+    exec_bg_job pcp dstat -t -c -m -d -D total,${devices} --md -M total,${md0device} --output "$csv"
+}
+
+function start_dstat_md1 () {
+    local csv md0device md1device devices
+    csv="$1"
+    md0device="$2"
+    mdd1evice="$3"
+    shift 3
+    devices="$*"
+
+    devices=$(spacetocsv "$devices")
+    exec_bg_job pcp dstat -t -c -m -d -D total,${devices} --md -M total,${md0device},${mdd1evice} --output "$csv"
+}
+
+function kill_dstat () {
+    # wait 5 sec for I/O to settle down
+    sleep 5
+    execute pkill python3
+}

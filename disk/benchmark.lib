@@ -1,0 +1,214 @@
+scriptdir=$(dirname -- "$(readlink -f -- "$0")")
+source $scriptdir/disk.lib
+
+ZFS_OPT='-O atime=off -O relatime=off -O xattr=sa -O dedup=off -O compression=off -O primarycache=none'
+
+
+function fio_raw () {
+    local benchname fio_option fiosize devices dev info csv log
+    benchname="$1"
+    fio_option="$2"
+    fiosize="$3"
+    shift 3
+    devices="$*"
+
+    for dev in ${devices}; do
+        benchname_dev="${benchname}-${dev}-raw"
+        echo "----------------------------------------------------------------------"
+        msg "start ${benchname_dev}"
+        info=$(get_logfilename "${benchname_dev}.info" txt)
+        csv=$(get_logfilename "${benchname_dev}.dstat" csv)
+        log=$(get_logfilename "${benchname_dev}.fio" log)
+        print_disk_info ${dev} >> "${info}"
+        start_dstat "${csv}" "${dev}"
+        print_diskpart_info ${dev} >> "${info}"
+        execute $scriptdir/fio-cdm ${fio_option} -s ${fiosize} -f /dev/${dev} > "${log}"
+        kill_dstat
+        wipe_devices ${dev}
+    done
+}
+
+function fio_md_raw () {
+    local benchname fio_option devname level devsize fiosize devnum devices info csv log
+    benchname="$1"
+    fio_option="$2"
+    devname="$3"
+    level="$4"
+    devsize="$5"
+    fiosize="$6"
+    shift 6
+    devnum=$#
+    devices="$*"
+
+    benchname="${benchname}-mdraid${level}-disk${devnum}-raw"
+    echo "----------------------------------------------------------------------"
+    msg "start ${benchname}"
+    info=$(get_logfilename "${benchname}.info" txt)
+    csv=$(get_logfilename "${benchname}.dstat" csv)
+    log=$(get_logfilename "${benchname}.fio" log)
+    print_disk_info ${devices} >> "${info}"
+    create_md ${devname} ${level} ${devsize} ${devices}
+    start_dstat_md0 "${csv}" "${devname}" ${devices}
+    wait_md_syncing ${devname}
+    print_diskpart_info ${devices} >> "${info}"
+    print_md_info ${devname} >> "${info}"
+    execute $scriptdir/fio-cdm ${fio_option} -s ${fiosize} -f /dev/${devname} >> "${log}"
+    kill_dstat
+    wipe_devices ${devname}
+    destroy_md ${devname}
+    wipe_devices ${devices}
+}
+
+function fio_md_ext4 () {
+    local benchname fio_option devname level devsize fiosize devnum devices info csv log
+    benchname="$1"
+    fio_option="$2"
+    devname="$3"
+    level="$4"
+    devsize="$5"
+    fiosize="$6"
+    shift 6
+    devnum=$#
+    devices="$*"
+
+    benchname="${benchname}-mdraid${level}-disk${devnum}-ext4"
+    echo "----------------------------------------------------------------------"
+    msg "start ${benchname}"
+    info=$(get_logfilename "${benchname}.info" txt)
+    csv=$(get_logfilename "${benchname}.dstat" csv)
+    log=$(get_logfilename "${benchname}.fio" log)
+    print_disk_info ${devices} >> "${info}"
+    create_md ${devname} ${level} ${devsize} ${devices}
+    start_dstat_md0 "${csv}" "${devname}" ${devices}
+    wait_md_syncing ${devname}
+    print_diskpart_info ${devices} >> "${info}"
+    print_md_info ${devname} >> "${info}"
+    create_ext4 ${devname} >> "${info}"
+    mount_ext4 ${devname} /${devname}
+    print_ext4_info ${devname} >> "${info}"
+    execute $scriptdir/fio-cdm ${fio_option} -s ${fiosize} -u -d /${devname} >> "${log}"
+    kill_dstat
+    umount_ext4 /${devname}
+    wipe_devices ${devname}
+    destroy_md ${devname}
+    wipe_devices ${devices}
+}
+
+function fio_zfs_simple () {
+    local benchname fio_option poolname level devsize fiosize devnum devices dev diskparts info csv log ashift
+    benchname="$1"
+    fio_option="$2"
+    poolname="$3"
+    level="$4"
+    devsize="$5"
+    fiosize="$6"
+    shift 6
+    devnum=$#
+    devices="$*"
+
+    benchname="${benchname}-zfs-${level}-disk${devnum}"
+    echo "----------------------------------------------------------------------"
+    msg "start ${benchname}"
+    info=$(get_logfilename "${benchname}.info" txt)
+    csv=$(get_logfilename "${benchname}.dstat" csv)
+    log=$(get_logfilename "${benchname}.fio" log)
+    print_disk_info ${devices} >> "${info}"
+
+    diskparts=""
+    for dev in ${devices}; do
+        create_gpt $dev ${devsize} BF01
+        diskparts="${diskparts} $(get_partname $dev)"
+    done
+    # wait a while to zpool will be able to create a pool using the GPT name of a partition
+    # 'blockdev --rereadpt' seems to have no effect to resolve this
+    execute sleep 5
+    if [ "${level}" = "stripe" ]; then
+        level=""
+    fi
+    ashift=$(get_ashift $(echo "${devices}" | cut -d' ' -f1))
+    create_zfs zpool create -o ashift=${ashift} ${ZFS_OPT} \
+        ${poolname} ${level} ${diskparts}
+
+    start_dstat "${csv}" ${devices}
+    print_diskpart_info ${devices} >> "${info}"
+    print_zfs_info >> "${info}"
+    execute $scriptdir/fio-cdm ${fio_option} -s ${fiosize} -u -d /${poolname} >> "${log}"
+    kill_dstat
+    destroy_zfs ${poolname}
+    wipe_devices ${devices}
+}
+
+function fio_md_zfs () {
+    local benchname fio_option devname level devsize devnum fiosize devices info csv log ashift
+    benchname="$1"
+    fio_option="$2"
+    devname="$3"
+    level="$4"
+    devsize="$5"
+    fiosize="$6"
+    shift 6
+    devnum=$#
+    devices="$*"
+
+    benchname="${benchname}-mdraid${level}-disk${devnum}-zfs"
+    echo "----------------------------------------------------------------------"
+    msg "start ${benchname}"
+    info=$(get_logfilename "${benchname}.info" txt)
+    csv=$(get_logfilename "${benchname}.dstat" csv)
+    log=$(get_logfilename "${benchname}.fio" log)
+    print_disk_info ${devices} >> "${info}"
+    create_md ${devname} ${level} ${devsize} ${devices}
+    start_dstat_md0 "${csv}" "${devname}" ${devices}
+    wait_md_syncing ${devname}
+    print_diskpart_info ${devices} >> "${info}"
+    print_md_info ${devname} >> "${info}"
+
+    # default chunk size of mdraid is 512KiB but max ashift is 16
+    ashift=$(get_ashift ${devname})
+    create_zfs zpool create -o ashift=${ashift} ${ZFS_OPT} \
+        ${devname} /dev/${devname}
+    print_zfs_info >> "${info}"
+    execute $scriptdir/fio-cdm ${fio_option} -s ${fiosize} -u -d /${devname} >> "${log}"
+    kill_dstat
+    destroy_zfs ${devname}
+
+    wipe_devices ${devname}
+    destroy_md ${devname}
+    wipe_devices ${devices}
+}
+
+function exec_for_each_devices () {
+    local funcname benchname fio_option devname level devsize fiosize mindev devices spaces target
+    funcname="$1"
+    benchname="$2"
+    fio_option="$3"
+    devname="$4"
+    level="$5"
+    devsize="$6"
+    fiosize="$7"
+    mindev="$8"
+    shift 8
+    devices="$*"
+
+    (
+        set -- ${devices}
+        target=""
+
+        # count number of spaces
+        spaces=$(expr ${mindev} - 1)
+
+        while : ; do
+            if [ $# -eq 0 ]; then
+                break
+            fi
+            target="${target} $1"
+            shift 1
+            if [ $(echo ${target} | tr -cd ' \t' | wc -c) -lt ${spaces} ]; then
+                # ${target} does not have enough number of devices yet
+                continue
+            fi
+            # $fio_option can be an empty string, so double quote are required to avoid discrepancies in the number of arguments.
+            ${funcname} ${benchname} "${fio_option}" ${devname} ${level} ${devsize} ${fiosize} ${target}
+        done
+    )
+}
