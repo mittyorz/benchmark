@@ -145,6 +145,7 @@ function wait_md_syncing () {
         if [ ! -f /sys/block/${d}/md/sync_completed ]; then
             # ${d} may be stripe (raid0)
             # 'mdadm --wait' return with 1 when /dev/${d} is raid0
+            # also, no need to wait for synchronization for raid0
             continue
         fi
         devpath="${devpath} /dev/${d}"
@@ -154,7 +155,8 @@ function wait_md_syncing () {
         # there is no mdraid device except raid0
         return 0
     fi
-    mdadm --wait ${devpath}
+    # 'mdadm --wait' returns with none-zero when $devpath was already synced
+    execute mdadm --wait ${devpath} || true
     # wait another 5 sec for I/O to settle down
     sleep 5
 }
