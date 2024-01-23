@@ -330,3 +330,7 @@ function check_executable () {
         exit 1
     fi
 }
+
+
+check_executable lscpu lsmem lspci lsblk udevadm blockdev fdisk gdisk \
+    sgdisk modinfo mdadm tune2fs zfs zpool zdb wipefs pcp hdparm
