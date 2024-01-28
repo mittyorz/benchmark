@@ -331,6 +331,40 @@ function check_executable () {
     fi
 }
 
+function secure_erase () {
+    local devname minutes
+    devname="$1"
+
+    if [ $(cat /sys/block/${devname}/queue/rotational) = "1" ]; then
+        msg "${devname} is rotating disk device, secure erase is likely to take a very long time"
+        return 0
+    fi
+    if ! hdparm -I /dev/${devname} | grep -qE "not\s+enabled" ; then
+        msg "Security: ${devname} is enabled"
+        return 0
+    fi
+    if ! hdparm -I /dev/${devname} | grep -qE "not\s+locked" ; then
+        msg "Security: ${devname} is locked"
+        return 0
+    fi
+    if ! hdparm -I /dev/${devname} | grep -qE "not\s+frozen" ; then
+        msg "Security: ${devname} is frozen"
+        return 0
+    fi
+    minutes=$(hdparm -I /dev/${devname} | grep 'SECURITY ERASE UNIT.' | sed -r 's/[ \t]*([0-9]+)min for SECURITY.*/\1/')
+    if [ -z "$minutes" ]; then
+        msg "The time required for secure erase of ${devname} could not be detected."
+        return 0
+    fi
+    if [ $minutes -ge 10 ]; then
+        msg "Too much time (${minutes} minutes) required to perform secure erase"
+        return 0
+    fi
+    msg "wait ${minutes} minutes for secure erase..."
+    execute hdparm --user-master u --security-set-pass PasSWorD /dev/${devname}
+    execute hdparm --user-master u --security-erase PasSWorD /dev/${devname}
+}
+
 
 check_executable lscpu lsmem lspci lsblk udevadm blockdev fdisk gdisk \
     sgdisk modinfo mdadm tune2fs zfs zpool zdb wipefs pcp hdparm
