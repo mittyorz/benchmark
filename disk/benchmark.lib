@@ -212,3 +212,6 @@ function exec_for_each_devices () {
         done
     )
 }
+
+
+check_executable fio
