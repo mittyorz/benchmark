@@ -48,7 +48,8 @@ function create_gpt () {
 function print_system_info () {
     execute uname -a
     execute lscpu
-    execute lsmem
+    # lsmem may fail on Raspberry Pi for "cannot open /sys/devices/system/memory"
+    execute lsmem || true
     execute lspci
     execute lspci -tvv
     execute lsblk
@@ -111,6 +112,12 @@ function print_zfs_info () {
     execute zfs list -t all -o mountpoint,space,compression,compressratio,checksum
     execute zfs get all
     execute df -h
+}
+
+function print_zfs_benchmark () {
+    execute cat /proc/spl/kstat/zfs/chksum_bench
+    execute cat /proc/spl/kstat/zfs/fletcher_4_bench
+    execute cat /proc/spl/kstat/zfs/vdev_raidz_bench
 }
 
 function create_md () {
