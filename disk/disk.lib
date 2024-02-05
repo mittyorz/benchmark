@@ -100,6 +100,7 @@ function print_zfs_version () {
     execute zfs version
     execute modinfo -n zfs
     execute modinfo -F srcversion zfs
+    execute modinfo -l zfs
 }
 
 function print_zfs_info () {
