@@ -179,7 +179,14 @@ function get_ashift () {
     elif [ "$blocksize" = "4096" ]; then
         echo "12"
     else
-        return 1
+        if [ $blocksize -gt 4096 -a  $(cat /sys/block/${devname}/queue/rotational)  = "0" ]; then
+            # It looks like a USB SSD adapter is being used
+            # https://openzfs.github.io/openzfs-docs/Performance%20and%20Tuning/Workload%20Tuning.html#alignment-shift
+            echo "12"
+        else
+            msg "physical block size of '${devname}' is ${blocksize}"
+            return 1
+        fi
     fi
 }
 
